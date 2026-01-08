@@ -77,18 +77,18 @@ module my_addr::userprofile {
     }
 
     struct UserStats has key {
-        reputation: u64,
-        bounties_won: u64,
-        bounties_joined: u64,
-        total_earned: u64,
-        disputes_lost: u64,
-        bounties_created: u64,
-        total_spent: u64,
-        rank_level: RankLevel, 
-        season_points: u64,
-        last_active_at: u64,
-        version: u8,
-        flags: u64,
+        reputation: u64,        // Điểm uy tín tổng hợp của user (ảnh hưởng rank & trust)
+        bounties_won: u64,      // Số bounty đã thắng (claim thành công)
+        bounties_joined: u64,   // Tổng số bounty đã tham gia
+        total_earned: u64,      // Tổng token kiếm được từ hệ thống
+        disputes_lost: u64,     // Số khiếu nại bị xử thua
+        bounties_created: u64,  // Số bounty user đã tạo
+        total_spent: u64,       // Tổng token đã chi (tạo bounty, fee, penalty)
+        rank_level: RankLevel,  // Cấp bậc hiện tại (Bronze/Silver/Gold/...)
+        season_points: u64,     // Điểm theo mùa (reset mỗi season, dùng leaderboard)
+        last_active_at: u64,    // Thời điểm hoạt động gần nhất (timestamp giây)
+        version: u8,            // Version struct (phục vụ upgrade/migration)
+        flags: u64,             // Bit flags trạng thái (ban, verified, vip,...)
     }
 
     struct GameAccount has key {
@@ -293,6 +293,37 @@ module my_addr::userprofile {
         assert_initialized(user_addr);
         let game_account = borrow_global_mut<GameAccount>(user_addr);
         game_account.verified = true;
+    }
+
+    //Nâng chỉ số bounties_created lên khi gọi hàm create_challenge 
+    public(package) fun update_bounties_created(user_addr: address) acquires UserStats {
+        let user_stats = borrow_global_mut<UserStats>(user_addr);
+        user_stats.bounties_created += 1;
+        user_stats.last_active_at = timestamp::now_seconds();
+    }
+
+    //Nâng chỉ số uy tín 
+    public(package) fun update_reputation(user_addr: address, delta: u64) acquires UserStats {
+        let user_stats = borrow_global_mut<UserStats>(user_addr);
+        user_stats.reputation += delta;
+        user_stats.last_active_at = timestamp::now_seconds();
+    }
+
+    public(package) fun update_total_spent(user_addr: address, delta: u64) acquires UserStats {
+        let user_stats = borrow_global_mut<UserStats>(user_addr);
+        user_stats.total_spent += delta;
+        user_stats.last_active_at = timestamp::now_seconds();
+    }
+
+    ///Cập nhật lúc tạo challenge, truy cập Global Storage 1 lần để cập nhật 4 field trong resource UserStats 
+    public(package) fun on_challenge_created(user_addr: address, initial_reward: u64, creation_fee: u64) acquires UserStats {
+        let user_stats = borrow_global_mut<UserStats>(user_addr);
+        user_stats.bounties_created += 1;
+        let total_spent = initial_reward + creation_fee;
+        let reputation = total_spent / 100_000; //Mỗi 1 Ananta được 10 điểm uy tín 
+        user_stats.total_spent += total_spent;
+        user_stats.reputation += reputation;
+        user_stats.last_active_at = timestamp::now_seconds();
     }
     
     // View Functions
