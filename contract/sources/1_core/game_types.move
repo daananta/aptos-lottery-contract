@@ -40,6 +40,7 @@ module my_addr::game_types {
         Platinum
     }
 
+    //Chờ EventDriventx
     public enum ChallengeStatus has copy, drop, store {
         Upcoming, //Đã tạo, chưa bắt đầu
         Active,     // Đang diễn ra (Bình thường)
@@ -87,7 +88,7 @@ module my_addr::game_types {
         Pending,                // Đang chờ
         Approved,               // Đã duyệt
         
-        // 🔥 Rejected chứa luôn lý do (String). 
+        // Rejected chứa luôn lý do (String). 
         // Đây là điều u8 không bao giờ làm được.
         Rejected(String),       
         
@@ -95,15 +96,12 @@ module my_addr::game_types {
     }
 
     public enum RewardDistribution has copy, drop, store {
-        // Kiểu 1: Cố định cho mỗi người thắng theo %(Bounty)
-        FixedPerWinner(u64), 
-
-        // Kiểu 2: Chia theo phần trăm thứ hạng (Esport / Hackathon)
+        // Kiểu 1: Chia theo phần trăm thứ hạng (Esport / Hackathon)
         // Ví dụ: Vector [5000, 3000, 2000] -> Top 1: 50%, Top 2: 30%, Top 3: 20%.
         // Tổng phải <= 10000 (100%).
-        RankedPercentage(vector<u64>),
+        RankedPercentage(vector<u64>), //kèm vector
 
-        // Kiểu 3: Chia đều quỹ thưởng (Community Event)
+        // Kiểu 2: Chia đều quỹ thưởng (Community Event)
         // Ví dụ: Quỹ 100 APT, có 4 người thắng -> Mỗi người 25 APT.
         EqualShare, 
     }
@@ -150,10 +148,18 @@ module my_addr::game_types {
         else { abort E_INVALID_CATEGORY_MODE }
     }
 
-    public fun u8_to_distribution(code: u8): RewardDistribution {
-        if (code == 1) {RewardDistribution::FixedPerWinner}
-        else if(code == 2) {RewardDistribution::RankedPercentage}
-        else if(code == 3) {RewardDistribution::EqualShare}
+    // Trong game_types.move
+    public fun u8_to_distribution(code: u8, params: vector<u64>): RewardDistribution {
+        if (code == 1) {
+            // Case 1: RankedPercentage
+            // Nhét vector params vào trong Enum
+            RewardDistribution::RankedPercentage(params)
+        } 
+        else if (code == 2) {
+            // Case 2: EqualShare
+            // Params bị thừa ở đây, nhưng vì vector<u64> có drop nên Move tự hủy nó.
+            RewardDistribution::EqualShare
+        } 
         else {
             abort E_INVALID_DISTRIBUTION_MODE
         }

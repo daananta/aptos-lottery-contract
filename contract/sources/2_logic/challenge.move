@@ -120,6 +120,8 @@ module my_addr::challenge {
         total_sponsored: u64, 
         sponsor_count: u64,
 
+        total_votes: u64, //Đánh giá độ hot
+
         // Submissions
         submissions: SmartTable<address, Submission>, //Submission là resource thường lưu vào account user
         submission_count: u64,
@@ -197,7 +199,7 @@ module my_addr::challenge {
         //Luật chơi
         category_val: u8, //Loại thử thách 
         scoring_mode_val: u8, // Frontend gửi u8, loại chấm điểm 
-        distribution_val: u8, //cách chia thưởng
+        distribution_val: u8, //cách chia thưởng, frontend gửi
         max_winners: u64, //Số người thắng tối đa
         distribution_params: vector<u64>, //theo %
         //Thời gian
@@ -228,7 +230,7 @@ module my_addr::challenge {
 
         let category = game_types::u8_to_category(category_val);
         let scoring_mode = game_types::u8_to_scoring(scoring_mode_val);
-        let distribution = game_types::u8_to_distribution(distribution_val);
+        let distribution = game_types::u8_to_distribution(distribution_val, distribution_params);
 
 
         let challenge_registry = borrow_global_mut<ChallengeRegistry>(@my_addr);
@@ -287,6 +289,7 @@ module my_addr::challenge {
             //Counters
             total_sponsored: 0,
             sponsor_count: 0,
+            total_votes: 0,
             submissions: smart_table::new(),
             submission_count: 0,
             top_candidates: vector::empty(),
@@ -373,6 +376,7 @@ module my_addr::challenge {
         });
     }
 
+    //Cần xử lý sybil và kiểm tra thời gian, chỉ vote sau khi hết thời gian nộp bài 
     public entry fun vote(sender: &signer, 
         challenge_id: u64, 
         candidate_addr: address, 
@@ -380,6 +384,7 @@ module my_addr::challenge {
     ) acquires ChallengeRegistry, ChallengeConfig, Challenge {
         assert!(score_val <= 100, 999); //Check xem điểm hợp lệ không
         let sender_addr = signer::address_of(sender);
+        let now = timestamp::now_seconds();
         
         let registry = borrow_global<ChallengeRegistry>(@my_addr);
         
@@ -387,9 +392,10 @@ module my_addr::challenge {
         let challenge = borrow_global_mut<Challenge>(challenge_addr);
         let submission = challenge.submissions.borrow_mut(candidate_addr);
 
-        //Check sender đã từng vote cho address ở challenge này chưa 
+        //Check sender đã từng vote cho address ở challenge này chưa(đã kiểm tra sybil)
         let receipt_key = VoteReceipt{voter: sender_addr, candidate: candidate_addr};
         assert!(!challenge.vote_records.contains(receipt_key), 999);
+        assert!(now >= challenge.submission_deadline && now <= challenge.voting_deadline, 999); //Check thời gian
 
         //Lấy Config để xem đang chơi ở chế độ nào
         let config = borrow_global<ChallengeConfig>(challenge_addr);
@@ -426,7 +432,34 @@ module my_addr::challenge {
         })
     }
 
-    // Update leaderboard, hàm này được gọi mỗi khi giám khảo gọi hàm chấm điểm
+    ///Sender có thể là giám khảo, khán giả(Hoặc dùng EventDrivenTx)
+    public entry fun finalize_challenge(sender: &signer, challenge_id: u64) acquires Challenge, Challenge, ChallengeRegistry {
+        //1. Lấy Challenge 
+        let registry = borrow_global<ChallengeRegistry>(@my_addr);
+        let challenge_addr = *registry.challenges.borrow(challenge_id);
+        let challenge = borrow_global_mut<Challenge>(challenge_addr);   
+
+        //2. Kiểm tra điều kiện
+        let now = timestamp::now_seconds();
+        assert!(now > challenge.voting_deadline, 999);
+        assert!(challenge.status != ChallengeStatus::Completed, 999);
+
+        //3. Lấy extend ref và signer
+        let config = borrow_global<ChallengeConfig>(challenge_addr);
+        let extend_ref = config.extend_ref;
+        let challenge_signer = object::generate_signer_for_extending(&extend_ref);
+
+        //4. Chia tiền
+        if (config.distribution == RewardDistribution::RankedPercentage) {
+            let 
+        }
+
+        //5. Cập nhật trạng thái
+
+
+    }
+
+    // Update leaderboard, hàm này được gọi mỗi khi giám khảo, khán giả gọi hàm vote
     fun update_leaderboard(
         challenge: &mut Challenge,
         candidate_addr: address,
