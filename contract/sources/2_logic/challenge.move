@@ -441,7 +441,7 @@ module my_addr::challenge {
 
         //2. Kiểm tra điều kiện
         let now = timestamp::now_seconds();
-        assert!(now > challenge.voting_deadline, 999);
+        assert!(now > challenge.voting_deadline, 999); 
         assert!(challenge.status != ChallengeStatus::Completed, 999);
 
         //3. Lấy extend ref và signer
@@ -449,13 +449,68 @@ module my_addr::challenge {
         let extend_ref = config.extend_ref;
         let challenge_signer = object::generate_signer_for_extending(&extend_ref);
 
+        let winners = &challenge.top_candidates;
+        let winner_count = vector::length(winners);
         //4. Chia tiền
-        if (config.distribution == RewardDistribution::RankedPercentage) {
-            let 
-        }
+        match (&config.distribution) {
+            RewardDistribution::RankedPercentage(percentages) => {
+                let i:u64 = 0;
+                //Duyệt qua danh sách người thắng
+                while (i < winner_count) {
+                    if (i < vector::length(percentages)) {
+                    let candidate = vector::borrow(winners, i);
+                    let percent = *vector::borrow(percentages, i);
+
+                    let reward_amount = (challenge.initial_reward * percent) / 10000;
+
+                    if (reward_amount > 0) {
+                            primary_fungible_store::transfer(
+                                &challenge_signer,
+                                challenge.asset,
+                                candidate.addr,
+                                reward_amount
+                            );
+                    };
+                    //Event emit tại đây
+                };
+                i += 1;
+                }
+            }
+
+            // TRƯỜNG HỢP 2: Chia đều (EqualShare)
+            RewardDistribution::EqualShare => {
+                if (winner_count > 0) {
+                    // Tính phần chia đều
+                    let share_amount = challenge.initial_reward / winner_count;
+                    // Tính phần dư (để tránh mất tiền lẻ do phép chia nguyên)
+                    let remainder = challenge.initial_reward % winner_count;
+                    
+                    let i = 0;
+                    while (i < winner_count) {
+                        let candidate = vector::borrow(winners, i);
+                        let final_amount = share_amount;
+                        
+                        // Người Top 1 nhận luôn phần dư (Fairness)
+                        if (i == 0) {
+                            final_amount = final_amount + remainder;
+                        };
+
+                        if (final_amount > 0) {
+                            primary_fungible_store::transfer(
+                                &challenge_signer,
+                                challenge.asset,
+                                candidate.addr,
+                                final_amount
+                            );
+                        };
+                        i = i + 1;
+                    };
+                };
+            },
+        };
 
         //5. Cập nhật trạng thái
-
+        challenge.status = ChallengeStatus::Settled;
 
     }
 
@@ -604,14 +659,14 @@ module my_addr::challenge {
                 let val = *vector::borrow(&distribution_params, i);
                 
                 // Validate từng phần tử
-                assert!(val > 0 && val <= 100, error::invalid_argument(999));
+                assert!(val > 0 && val <= 10000, error::invalid_argument(999));
                 
                 sum = sum + val;
                 i = i + 1;
             };
 
             // Validate tổng
-            assert!(sum == 100, error::invalid_argument(999));
+            assert!(sum == 10000, error::invalid_argument(999));
         };
     }
 }
